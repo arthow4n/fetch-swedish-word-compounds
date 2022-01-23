@@ -1,0 +1,46 @@
+# fly.toml file generated for fetch-swedish-word-compounds on 2022-01-23T20:13:09+01:00
+
+app = "fetch-swedish-word-compounds"
+
+kill_signal = "SIGINT"
+kill_timeout = 5
+processes = []
+
+[build]
+  builder = "heroku/buildpacks:20"
+
+[env]
+  FSWC_PORT = "8080"
+  FSWC_CORS_ALLOW_ORIGIN = "https://arthow4n.github.io"
+
+[experimental]
+  allowed_public_ports = []
+  auto_rollback = true
+
+[[services]]
+  internal_port = 8080
+  processes = ["app"]
+  protocol = "tcp"
+  script_checks = []
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+    type = "connections"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.http_checks]]
+    interval = "10s"
+    grace_period = "5s"
+    method = "get"
+    path = "/compounds?word=anden"
+    protocol = "http"
+    timeout = "2s"
+    [services.http_checks.headers]

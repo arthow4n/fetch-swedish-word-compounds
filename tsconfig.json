@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "build",
+    "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Node",
     "allowSyntheticDefaultImports": true

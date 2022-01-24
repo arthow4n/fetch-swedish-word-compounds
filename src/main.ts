@@ -118,6 +118,7 @@ createServer(async (req, res) => {
       }
 
       const compounds = $('.grundform')
+        .eq(0)
         .text()
         .replace(/[^\p{L}| ]/gu, '')
         .split('|');

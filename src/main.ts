@@ -43,6 +43,7 @@ const responseHeadersWithCache: OutgoingHttpHeaders = {
 createServer(async (req, res) => {
   try {
     const badRequest = () => {
+      console.log(`Bad request: url=${req.url}`)
       res.writeHead(400, responseHeadersWithCache);
       res.end(JSON.stringify({error: 'Bad request'}));
     };

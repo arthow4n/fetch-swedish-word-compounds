@@ -11,6 +11,7 @@ type WordQueryResponse = {
   baseform: string;
   compounds: string[];
   compoundsLemma: string[];
+  definitions: string[];
   alternatives: string[];
 };
 
@@ -43,7 +44,7 @@ const responseHeadersWithCache: OutgoingHttpHeaders = {
 createServer(async (req, res) => {
   try {
     const badRequest = () => {
-      console.log(`Bad request: url=${req.url}`)
+      console.log(`Bad request: url=${req.url}`);
       res.writeHead(400, responseHeadersWithCache);
       res.end(JSON.stringify({error: 'Bad request'}));
     };
@@ -107,6 +108,7 @@ createServer(async (req, res) => {
           baseform: '',
           compounds: [],
           compoundsLemma: [],
+          definitions: [],
           alternatives: slanks
             .map(
               x =>
@@ -133,10 +135,15 @@ createServer(async (req, res) => {
             .replace(/[ 0-9]*$/gu, '')
         );
 
+      const definitions = $('.lexemid .def')
+        .toArray()
+        .map(x => $(x).text());
+
       return ok(word, {
         baseform,
         compounds,
         compoundsLemma,
+        definitions,
         alternatives: [],
       });
     }

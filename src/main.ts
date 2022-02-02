@@ -80,12 +80,8 @@ createServer(async (req, res) => {
         return badRequest();
       }
 
-      if (lru.has(word)) {
-        const cached = lru.get(word);
-        if (!cached) {
-          throw new Error("Expected LRU cache hit but didn't");
-        }
-
+      const cached = lru.get(word);
+      if (cached) {
         console.log(`GET (from LRU cache) /compounds?word=: ${word}`);
         return ok(word, cached);
       }

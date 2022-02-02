@@ -15,7 +15,7 @@ type WordQueryResponse = {
   alternatives: string[];
 };
 
-const port = process.env.FSWC_PORT || 8000;
+const port = process.env.FSWC_PORT || process.env.PORT || 8000;
 const commonHaders: OutgoingHttpHeaders = {
   'Content-Type': 'application/json',
 };

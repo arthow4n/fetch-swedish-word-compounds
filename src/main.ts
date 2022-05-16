@@ -2,30 +2,19 @@ import 'dotenv/config';
 import 'log-timestamp';
 import got from 'got';
 import QuickLRU from 'quick-lru';
-import {createServer, OutgoingHttpHeaders} from 'node:http';
+import {uniq, uniqBy} from 'lodash-es';
+import {createServer} from 'node:http';
 import {URLSearchParams} from 'node:url';
 import cheerio from 'cheerio';
 import {parse} from 'node:url';
-
-type WordQueryResponse = {
-  baseform: string;
-  compounds: string[];
-  compoundsLemma: string[];
-  definitions: string[];
-  alternatives: string[];
-};
+import {WordQueryResponse} from './types.js';
+import {createResponseFromSaol, createResponseFromSo} from './utils.js';
+import {commonHaders, responseHeadersWithCache} from './headers.js';
+import {compoundsV1} from './deprecated.js';
 
 const port = process.env.FSWC_PORT || process.env.PORT || 8000;
-const commonHaders: OutgoingHttpHeaders = {
-  'Content-Type': 'application/json',
-};
 
-const lru = new QuickLRU<string, WordQueryResponse>({maxSize: 100000});
-const uniq = <T>(x: T[]) => Array.from(new Set(x));
-
-const cacheHeaders: OutgoingHttpHeaders = {
-  'Cache-Control': 'public, max-age=604800, immutable',
-};
+const lru = new QuickLRU<string, WordQueryResponse[]>({maxSize: 1000000});
 
 if (process.env.FSWC_CORS_ALLOW_ORIGIN) {
   console.log(`Enabling CORS for ${process.env.FSWC_CORS_ALLOW_ORIGIN}`);
@@ -36,11 +25,6 @@ if (process.env.FSWC_CORS_ALLOW_ORIGIN) {
   });
 }
 
-const responseHeadersWithCache: OutgoingHttpHeaders = {
-  ...commonHaders,
-  ...cacheHeaders,
-};
-
 createServer(async (req, res) => {
   try {
     const badRequest = () => {
@@ -49,12 +33,18 @@ createServer(async (req, res) => {
       res.end(JSON.stringify({error: 'Bad request'}));
     };
 
-    const ok = (word: string, response: WordQueryResponse) => {
-      response.compounds = uniq(response.compounds);
-      response.compoundsLemma = uniq(response.compoundsLemma);
-      response.alternatives = uniq(response.alternatives);
-      lru.set(word, response);
+    const ok = (word: string, rr: WordQueryResponse[]) => {
+      rr.forEach(r => {
+        r.compounds = uniq(r.compounds);
+        r.compoundsLemma = uniq(r.compoundsLemma);
+      });
 
+      const response = uniqBy(
+        rr.filter(r => !!r.baseform),
+        r => `${r.baseform}||${r.upstream}`
+      );
+
+      lru.set(word, response);
       res.writeHead(200, responseHeadersWithCache);
       res.end(JSON.stringify(response));
     };
@@ -69,79 +59,99 @@ createServer(async (req, res) => {
       return;
     }
 
+    const reqUserAgent = req.headers['user-agent'] ?? '';
+
     if (req.method === 'GET') {
       const parsed = parse(req.url);
-      if (parsed.pathname !== '/compounds') {
-        return badRequest();
-      }
 
       const word = new URLSearchParams(parsed.query ?? '').get('word');
       if (!word) {
         return badRequest();
       }
 
+      if (parsed.pathname === '/compounds') {
+        return await compoundsV1({word, res, reqUserAgent});
+      }
+
+      if (parsed.pathname !== '/analyse') {
+        return badRequest();
+      }
+
       const cached = lru.get(word);
       if (cached) {
-        console.log(`GET (from LRU cache) /compounds?word=: ${word}`);
+        console.log(`GET (from LRU cache) /analyse?word=: ${word}`);
         return ok(word, cached);
       }
 
-      console.log(`GET /compounds?word=: ${word}`);
+      console.log(`GET /analyse?word=: ${word}`);
 
-      const {body} = await got(
+      const {body: saolBody} = await got(
         `https://svenska.se/tri/f_saol.php?sok=${encodeURIComponent(word)}`,
         {
           headers: {
-            'User-Agent': req.headers['user-agent'] ?? '',
+            'User-Agent': reqUserAgent,
           },
         }
       );
 
-      const $ = cheerio.load(body);
-      const slanks = $('.slank').toArray();
-      if (slanks.length) {
-        return ok(word, {
-          baseform: '',
-          compounds: [],
-          compoundsLemma: [],
-          definitions: [],
-          alternatives: slanks
-            .map(
-              x =>
-                $(x)
-                  .text()
-                  .match(/\((.+)\)/)?.[1] ?? ''
-            )
-            .filter(x => x),
-        });
-      }
+      const $saolBody = cheerio.load(saolBody);
+      const saolSlanks = $saolBody('.slank').toArray();
 
-      const compounds = $('.grundform')
-        .eq(0)
-        .text()
-        .replace(/[^\p{L}| ]/gu, '')
-        .split('|');
+      const saolResults = !saolSlanks.length
+        ? [createResponseFromSaol($saolBody)]
+        : await Promise.all(
+            saolSlanks.map(async (x): Promise<WordQueryResponse> => {
+              try {
+                const {body} = await got(
+                  `https://svenska.se${$saolBody(x).attr('href')}`,
+                  {
+                    headers: {
+                      'User-Agent': req.headers['user-agent'] ?? '',
+                    },
+                  }
+                );
 
-      const baseform = compounds.join('');
-      const compoundsLemma = $('.hvord')
-        .toArray()
-        .map(x =>
-          $(x)
-            .text()
-            .replace(/[ 0-9]*$/gu, '')
-        );
+                return createResponseFromSaol(cheerio.load(body));
+              } catch {
+                return {
+                  upstream: '',
+                  baseform: '',
+                  compounds: [],
+                  compoundsLemma: [],
+                  definitions: [],
+                };
+              }
+            })
+          );
 
-      const definitions = $('.lexemid .def')
-        .toArray()
-        .map(x => $(x).text());
+      const soResults = await Promise.all(
+        saolResults.map(async (x): Promise<WordQueryResponse> => {
+          try {
+            const {body} = await got(
+              `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
+                x.baseform
+              )}`,
+              {
+                headers: {
+                  'User-Agent': req.headers['user-agent'] ?? '',
+                },
+              }
+            );
 
-      return ok(word, {
-        baseform,
-        compounds,
-        compoundsLemma,
-        definitions,
-        alternatives: [],
-      });
+            return createResponseFromSo(x.baseform, cheerio.load(body));
+          } catch {
+            return {
+              upstream: '',
+              baseform: '',
+              compounds: [],
+              compoundsLemma: [],
+              definitions: [],
+            };
+          }
+        })
+      );
+
+      return ok(word, [...saolResults, ...soResults]);
     }
 
     return badRequest();

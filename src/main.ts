@@ -8,7 +8,11 @@ import {URLSearchParams} from 'node:url';
 import cheerio from 'cheerio';
 import {parse} from 'node:url';
 import {WordQueryResponse} from './types.js';
-import {createResponseFromSaol, createResponseFromSo} from './utils.js';
+import {
+  createResponseFromSaol,
+  createResponseFromSo,
+  trimAndIgnoreEmpty,
+} from './utils.js';
 import {commonHaders, responseHeadersWithCache} from './headers.js';
 import {compoundsV1} from './deprecated.js';
 
@@ -26,8 +30,9 @@ createServer(async (req, res) => {
 
     const ok = (word: string, rr: WordQueryResponse[]) => {
       rr.forEach(r => {
-        r.compounds = uniq(r.compounds);
-        r.compoundsLemma = uniq(r.compoundsLemma);
+        r.compounds = trimAndIgnoreEmpty(uniq(r.compounds));
+        r.compoundsLemma = trimAndIgnoreEmpty(uniq(r.compoundsLemma));
+        r.definitions = trimAndIgnoreEmpty(uniq(r.definitions));
       });
 
       const response = uniqBy(
@@ -86,6 +91,7 @@ createServer(async (req, res) => {
       );
 
       const $saolBody = cheerio.load(saolBody);
+      // This can be tested by querying "anden".
       const saolSlanks = $saolBody('.slank').toArray();
 
       const saolResults = !saolSlanks.length
@@ -97,7 +103,7 @@ createServer(async (req, res) => {
                   `https://svenska.se${$saolBody(x).attr('href')}`,
                   {
                     headers: {
-                      'User-Agent': req.headers['user-agent'] ?? '',
+                      'User-Agent': reqUserAgent,
                     },
                   }
                 );
@@ -116,33 +122,56 @@ createServer(async (req, res) => {
           );
 
       const soResults = await Promise.all(
-        saolResults.map(async (x): Promise<WordQueryResponse> => {
+        saolResults.map(async (x): Promise<WordQueryResponse[]> => {
           try {
-            const {body} = await got(
+            const baseform = x.baseform;
+            const {body: soBody} = await got(
               `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
-                x.baseform
+                baseform
               )}`,
               {
                 headers: {
-                  'User-Agent': req.headers['user-agent'] ?? '',
+                  'User-Agent': reqUserAgent,
                 },
               }
             );
 
-            return createResponseFromSo(x.baseform, cheerio.load(body));
+            const $soBody = cheerio.load(soBody);
+            // This can be tested by querying "runt".
+            const soSlanks = $soBody('.slank').toArray();
+            return !soSlanks.length
+              ? [createResponseFromSo(baseform, $soBody)]
+              : await Promise.all(
+                  soSlanks.map(async (x): Promise<WordQueryResponse> => {
+                    try {
+                      const {body} = await got(
+                        `https://svenska.se${$soBody(x).attr('href')}`,
+                        {
+                          headers: {
+                            'User-Agent': reqUserAgent,
+                          },
+                        }
+                      );
+
+                      return createResponseFromSo(baseform, cheerio.load(body));
+                    } catch {
+                      return {
+                        upstream: '',
+                        baseform: '',
+                        compounds: [],
+                        compoundsLemma: [],
+                        definitions: [],
+                      };
+                    }
+                  })
+                );
           } catch {
-            return {
-              upstream: '',
-              baseform: '',
-              compounds: [],
-              compoundsLemma: [],
-              definitions: [],
-            };
+            return [];
           }
         })
       );
 
-      return ok(word, [...saolResults, ...soResults]);
+      return ok(word, [...saolResults, ...soResults.flat()]);
     }
 
     return badRequest();

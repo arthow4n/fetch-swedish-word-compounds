@@ -16,15 +16,6 @@ const port = process.env.FSWC_PORT || process.env.PORT || 8000;
 
 const lru = new QuickLRU<string, WordQueryResponse[]>({maxSize: 1000000});
 
-if (process.env.FSWC_CORS_ALLOW_ORIGIN) {
-  console.log(`Enabling CORS for ${process.env.FSWC_CORS_ALLOW_ORIGIN}`);
-  Object.assign(commonHaders, {
-    'Access-Control-Allow-Origin': process.env.FSWC_CORS_ALLOW_ORIGIN,
-    'Access-Control-Allow-Methods': 'OPTIONS, POST, GET',
-    'Access-Control-Max-Age': '604800',
-  });
-}
-
 createServer(async (req, res) => {
   try {
     const badRequest = () => {

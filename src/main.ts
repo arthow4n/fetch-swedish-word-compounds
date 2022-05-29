@@ -91,10 +91,27 @@ createServer(async (req, res) => {
       );
 
       const $saolBody = cheerio.load(saolBody);
+      const saolFoundNothing = $saolBody
+        .text()
+        .trim()
+        .startsWith(`Sökningen på ${word} i`);
+
       // This can be tested by querying "anden".
       const saolSlanks = $saolBody('.slank').toArray();
 
-      const saolResults = !saolSlanks.length
+      const createEmptyResponse = (): WordQueryResponse => {
+        return {
+          upstream: '',
+          baseform: '',
+          compounds: [],
+          compoundsLemma: [],
+          definitions: [],
+        };
+      };
+
+      const saolResults = saolFoundNothing
+        ? []
+        : !saolSlanks.length
         ? [createResponseFromSaol($saolBody)]
         : await Promise.all(
             saolSlanks.map(async (x): Promise<WordQueryResponse> => {
@@ -110,13 +127,7 @@ createServer(async (req, res) => {
 
                 return createResponseFromSaol(cheerio.load(body));
               } catch {
-                return {
-                  upstream: '',
-                  baseform: '',
-                  compounds: [],
-                  compoundsLemma: [],
-                  definitions: [],
-                };
+                return createEmptyResponse();
               }
             })
           );
@@ -137,9 +148,15 @@ createServer(async (req, res) => {
             );
 
             const $soBody = cheerio.load(soBody);
+            const soFoundNothing = $soBody
+              .text()
+              .trim()
+              .startsWith(`Sökningen på ${word} i`);
             // This can be tested by querying "runt".
             const soSlanks = $soBody('.slank').toArray();
-            return !soSlanks.length
+            return soFoundNothing
+              ? []
+              : !soSlanks.length
               ? [createResponseFromSo(baseform, $soBody)]
               : await Promise.all(
                   soSlanks.map(async (x): Promise<WordQueryResponse> => {
@@ -155,13 +172,7 @@ createServer(async (req, res) => {
 
                       return createResponseFromSo(baseform, cheerio.load(body));
                     } catch {
-                      return {
-                        upstream: '',
-                        baseform: '',
-                        compounds: [],
-                        compoundsLemma: [],
-                        definitions: [],
-                      };
+                      return createEmptyResponse();
                     }
                   })
                 );

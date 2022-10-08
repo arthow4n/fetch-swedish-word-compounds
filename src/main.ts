@@ -1,31 +1,27 @@
-import 'dotenv/config';
-import 'log-timestamp';
-import got from 'got';
-import QuickLRU from 'quick-lru';
-import {uniq, uniqBy} from 'lodash-es';
-import {createServer} from 'node:http';
-import {URLSearchParams} from 'node:url';
-import cheerio from 'cheerio';
-import {parse} from 'node:url';
-import {WordQueryResponse} from './types.js';
+import {cheerio, uniq, uniqBy, QuickLRU, serve} from '../deps.ts';
+import {WordQueryResponse} from './types.ts';
 import {
   createResponseFromSaol,
   createResponseFromSo,
   trimAndIgnoreEmpty,
-} from './utils.js';
-import {commonHaders, responseHeadersWithCache} from './headers.js';
-import {compoundsV1} from './deprecated.js';
+} from './utils.ts';
+import {commonHaders, responseHeadersWithCache} from './headers.ts';
 
-const port = process.env.FSWC_PORT || process.env.PORT || 8000;
+const port = parseInt(
+  Deno.env.get('FSWC_PORT') || Deno.env.get('PORT') || '8000',
+  10
+);
 
 const lru = new QuickLRU<string, WordQueryResponse[]>({maxSize: 1000000});
 
-createServer(async (req, res) => {
+const handler = async (req: Request): Promise<Response> => {
   try {
     const badRequest = () => {
-      console.log(`Bad request: url=${req.url}`);
-      res.writeHead(400, responseHeadersWithCache);
-      res.end(JSON.stringify({error: 'Bad request'}));
+      console.log(`${new Date().toISOString()}: Bad request: url=${req.url}`);
+      return new Response(JSON.stringify({error: 'Bad request'}), {
+        headers: responseHeadersWithCache,
+        status: 400,
+      });
     };
 
     const ok = (word: string, rr: WordQueryResponse[]) => {
@@ -37,12 +33,14 @@ createServer(async (req, res) => {
 
       const response = uniqBy(
         rr.filter(r => !!r.baseform),
-        r => `${r.baseform}||${r.upstream}`
+        (r: WordQueryResponse) => `${r.baseform}||${r.upstream}`
       );
 
       lru.set(word, response);
-      res.writeHead(200, responseHeadersWithCache);
-      res.end(JSON.stringify(response));
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: responseHeadersWithCache,
+      });
     };
 
     if (!req.url) {
@@ -50,45 +48,43 @@ createServer(async (req, res) => {
     }
 
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, commonHaders);
-      res.end();
-      return;
+      return new Response('', {
+        status: 204,
+        headers: commonHaders,
+      });
     }
 
-    const reqUserAgent = req.headers['user-agent'] ?? '';
+    const reqUserAgent = req.headers.get('User-Agent') ?? '';
 
     if (req.method === 'GET') {
-      const parsed = parse(req.url);
-
-      const word = new URLSearchParams(parsed.query ?? '').get('word');
+      const url = new URL(req.url);
+      const word = new URL(req.url).searchParams.get('word');
       if (!word) {
         return badRequest();
       }
 
-      if (parsed.pathname === '/compounds') {
-        return await compoundsV1({word, res, reqUserAgent});
-      }
-
-      if (parsed.pathname !== '/analyse') {
+      if (url.pathname !== '/analyse') {
         return badRequest();
       }
 
       const cached = lru.get(word);
       if (cached) {
-        console.log(`GET (from LRU cache) /analyse?word=: ${word}`);
+        console.log(
+          `${new Date().toISOString()}: GET (from LRU cache) /analyse?word=: ${word}`
+        );
         return ok(word, cached);
       }
 
-      console.log(`GET /analyse?word=: ${word}`);
+      console.log(`${new Date().toISOString()}: GET /analyse?word=: ${word}`);
 
-      const {body: saolBody} = await got(
+      const saolBody = await fetch(
         `https://svenska.se/tri/f_saol.php?sok=${encodeURIComponent(word)}`,
         {
           headers: {
             'User-Agent': reqUserAgent,
           },
         }
-      );
+      ).then(r => r.text());
 
       const $saolBody = cheerio.load(saolBody);
       const saolFoundNothing = $saolBody
@@ -114,16 +110,16 @@ createServer(async (req, res) => {
         : !saolSlanks.length
         ? [createResponseFromSaol($saolBody)]
         : await Promise.all(
-            saolSlanks.map(async (x): Promise<WordQueryResponse> => {
+            saolSlanks.map(async (x: unknown): Promise<WordQueryResponse> => {
               try {
-                const {body} = await got(
+                const body = await fetch(
                   `https://svenska.se${$saolBody(x).attr('href')}`,
                   {
                     headers: {
                       'User-Agent': reqUserAgent,
                     },
                   }
-                );
+                ).then(r => r.text());
 
                 return createResponseFromSaol(cheerio.load(body));
               } catch {
@@ -133,53 +129,60 @@ createServer(async (req, res) => {
           );
 
       const soResults = await Promise.all(
-        saolResults.map(async (x): Promise<WordQueryResponse[]> => {
-          try {
-            const baseform = x.baseform;
-            const {body: soBody} = await got(
-              `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
-                baseform
-              )}`,
-              {
-                headers: {
-                  'User-Agent': reqUserAgent,
-                },
-              }
-            );
+        saolResults.map(
+          async (x: {baseform: string}): Promise<WordQueryResponse[]> => {
+            try {
+              const baseform = x.baseform;
+              const soBody = await fetch(
+                `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
+                  baseform
+                )}`,
+                {
+                  headers: {
+                    'User-Agent': reqUserAgent,
+                  },
+                }
+              ).then(r => r.text());
 
-            const $soBody = cheerio.load(soBody);
-            const soFoundNothing = $soBody
-              .text()
-              .trim()
-              .startsWith(`Sökningen på ${word} i`);
-            // This can be tested by querying "runt".
-            const soSlanks = $soBody('.slank').toArray();
-            return soFoundNothing
-              ? []
-              : !soSlanks.length
-              ? [createResponseFromSo(baseform, $soBody)]
-              : await Promise.all(
-                  soSlanks.map(async (x): Promise<WordQueryResponse> => {
-                    try {
-                      const {body} = await got(
-                        `https://svenska.se${$soBody(x).attr('href')}`,
-                        {
-                          headers: {
-                            'User-Agent': reqUserAgent,
-                          },
+              const $soBody = cheerio.load(soBody);
+              const soFoundNothing = $soBody
+                .text()
+                .trim()
+                .startsWith(`Sökningen på ${word} i`);
+              // This can be tested by querying "runt".
+              const soSlanks = $soBody('.slank').toArray();
+              return soFoundNothing
+                ? []
+                : !soSlanks.length
+                ? [createResponseFromSo(baseform, $soBody)]
+                : await Promise.all(
+                    soSlanks.map(
+                      async (x: unknown): Promise<WordQueryResponse> => {
+                        try {
+                          const body = await fetch(
+                            `https://svenska.se${$soBody(x).attr('href')}`,
+                            {
+                              headers: {
+                                'User-Agent': reqUserAgent,
+                              },
+                            }
+                          ).then(r => r.text());
+
+                          return createResponseFromSo(
+                            baseform,
+                            cheerio.load(body)
+                          );
+                        } catch {
+                          return createEmptyResponse();
                         }
-                      );
-
-                      return createResponseFromSo(baseform, cheerio.load(body));
-                    } catch {
-                      return createEmptyResponse();
-                    }
-                  })
-                );
-          } catch {
-            return [];
+                      }
+                    )
+                  );
+            } catch {
+              return [];
+            }
           }
-        })
+        )
       );
 
       return ok(word, [...saolResults, ...soResults.flat()]);
@@ -188,10 +191,12 @@ createServer(async (req, res) => {
     return badRequest();
   } catch (err) {
     console.error({req, err});
-    res.writeHead(500, commonHaders);
-    res.end(JSON.stringify({error: 'Internal server error'}));
-    return;
+    return new Response(JSON.stringify({error: 'Internal server error'}), {
+      status: 500,
+      headers: commonHaders,
+    });
   }
-}).listen(port, () => {
-  console.log(`Up and running on port ${port}`);
-});
+};
+
+serve(handler, {port});
+console.log(`${new Date().toISOString()}: Up and running on port ${port}`);

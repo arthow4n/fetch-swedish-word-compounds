@@ -1,5 +1,4 @@
-import {CheerioAPI} from 'cheerio';
-import {WordQueryResponse} from './types';
+import {WordQueryResponse} from './types.ts';
 
 export const trimAndIgnoreEmpty = (x: string[]) =>
   x.map(x => x.trim()).filter(x => x);
@@ -8,7 +7,8 @@ export const trimAndIgnoreEmpty = (x: string[]) =>
  * @example
  * createResponseFromSaol(cheerio.load("html from SAOL"));
  */
-export const createResponseFromSaol = ($: CheerioAPI) => {
+// deno-lint-ignore no-explicit-any
+export const createResponseFromSaol = ($: any) => {
   const compounds = $('.grundform')
     .eq(0)
     .text()
@@ -18,7 +18,7 @@ export const createResponseFromSaol = ($: CheerioAPI) => {
   const baseform = compounds.join('');
   const compoundsLemma = $('.hvord')
     .toArray()
-    .map(x =>
+    .map((x: unknown) =>
       $(x)
         .text()
         .replace(/[ 0-9]*$/gu, '')
@@ -26,7 +26,7 @@ export const createResponseFromSaol = ($: CheerioAPI) => {
 
   const definitions = $('.lexemid .def')
     .toArray()
-    .map(x => $(x).text());
+    .map((x: unknown) => $(x).text());
 
   const resp: WordQueryResponse = {
     upstream: 'saol',
@@ -41,7 +41,8 @@ export const createResponseFromSaol = ($: CheerioAPI) => {
 
 export const createResponseFromSo = (
   baseform: string,
-  $: CheerioAPI
+  // deno-lint-ignore no-explicit-any
+  $: any
 ): WordQueryResponse => {
   // Ignore results with mismatching baseform.
   if (baseform !== $('.orto').eq(0).text()) {
@@ -56,7 +57,7 @@ export const createResponseFromSo = (
 
   $('.fkomblock')
     .toArray()
-    .forEach(x => {
+    .forEach((x: unknown) => {
       $(x).text(` (${$(x).text()}) `);
     });
 
@@ -67,7 +68,7 @@ export const createResponseFromSo = (
     compoundsLemma: [],
     definitions: $('.kbetydelse')
       .toArray()
-      .map(x =>
+      .map((x: unknown) =>
         $(x)
           .text()
           .replace(/(?![()])[^\p{L}| ]/gu, '')

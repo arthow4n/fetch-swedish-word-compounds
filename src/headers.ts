@@ -1,23 +1,25 @@
-import {OutgoingHttpHeaders} from 'node:http';
-
-export const commonHaders: OutgoingHttpHeaders = {
+export const commonHaders = {
   'Content-Type': 'application/json',
 };
 
-if (process.env.FSWC_CORS_ALLOW_ORIGIN) {
-  console.log(`Enabling CORS for ${process.env.FSWC_CORS_ALLOW_ORIGIN}`);
+if (Deno.env.get('FSWC_CORS_ALLOW_ORIGIN')) {
+  console.log(
+    `${new Date().toISOString()}: Enabling CORS for ${Deno.env.get(
+      'FSWC_CORS_ALLOW_ORIGIN'
+    )}`
+  );
   Object.assign(commonHaders, {
-    'Access-Control-Allow-Origin': process.env.FSWC_CORS_ALLOW_ORIGIN,
+    'Access-Control-Allow-Origin': Deno.env.get('FSWC_CORS_ALLOW_ORIGIN'),
     'Access-Control-Allow-Methods': 'OPTIONS, POST, GET',
     'Access-Control-Max-Age': '604800',
   });
 }
 
-export const cacheHeaders: OutgoingHttpHeaders = {
+export const cacheHeaders = {
   'Cache-Control': 'public, max-age=604800, immutable',
 };
 
-export const responseHeadersWithCache: OutgoingHttpHeaders = {
+export const responseHeadersWithCache = {
   ...commonHaders,
   ...cacheHeaders,
 };

@@ -1,8 +1,11 @@
-import {cheerio, uniq, uniqBy, QuickLRU, serve} from '../deps.ts';
+import {uniq, uniqBy, QuickLRU, serve} from '../deps.ts';
 import {WordQueryResponse} from './types.ts';
 import {
+  $,
+  $$,
   createResponseFromSaol,
   createResponseFromSo,
+  toDocument,
   trimAndIgnoreEmpty,
 } from './utils.ts';
 import {commonHaders, responseHeadersWithCache} from './headers.ts';
@@ -86,14 +89,13 @@ const handler = async (req: Request): Promise<Response> => {
         }
       ).then(r => r.text());
 
-      const $saolBody = cheerio.load(saolBody);
-      const saolFoundNothing = $saolBody
-        .text()
-        .trim()
+      const $saolBody = toDocument(saolBody);
+      const saolFoundNothing = $($saolBody, 'body')
+        ?.textContent.trim()
         .startsWith(`Sökningen på ${word} i`);
 
       // This can be tested by querying "anden".
-      const saolSlanks = $saolBody('.slank').toArray();
+      const saolSlanks = $$($saolBody, '.slank');
 
       const createEmptyResponse = (): WordQueryResponse => {
         return {
@@ -110,10 +112,10 @@ const handler = async (req: Request): Promise<Response> => {
         : !saolSlanks.length
         ? [createResponseFromSaol($saolBody)]
         : await Promise.all(
-            saolSlanks.map(async (x: unknown): Promise<WordQueryResponse> => {
+            saolSlanks.map(async (x): Promise<WordQueryResponse> => {
               try {
                 const body = await fetch(
-                  `https://svenska.se${$saolBody(x).attr('href')}`,
+                  `https://svenska.se${x.getAttribute('href')}`,
                   {
                     headers: {
                       'User-Agent': reqUserAgent,
@@ -121,7 +123,7 @@ const handler = async (req: Request): Promise<Response> => {
                   }
                 ).then(r => r.text());
 
-                return createResponseFromSaol(cheerio.load(body));
+                return createResponseFromSaol(toDocument(body));
               } catch {
                 return createEmptyResponse();
               }
@@ -129,60 +131,52 @@ const handler = async (req: Request): Promise<Response> => {
           );
 
       const soResults = await Promise.all(
-        saolResults.map(
-          async (x: {baseform: string}): Promise<WordQueryResponse[]> => {
-            try {
-              const baseform = x.baseform;
-              const soBody = await fetch(
-                `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
-                  baseform
-                )}`,
-                {
-                  headers: {
-                    'User-Agent': reqUserAgent,
-                  },
-                }
-              ).then(r => r.text());
+        saolResults.map(async (x): Promise<WordQueryResponse[]> => {
+          try {
+            const baseform = x.baseform;
+            const soBody = await fetch(
+              `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
+                baseform
+              )}`,
+              {
+                headers: {
+                  'User-Agent': reqUserAgent,
+                },
+              }
+            ).then(r => r.text());
 
-              const $soBody = cheerio.load(soBody);
-              const soFoundNothing = $soBody
-                .text()
-                .trim()
-                .startsWith(`Sökningen på ${word} i`);
-              // This can be tested by querying "runt".
-              const soSlanks = $soBody('.slank').toArray();
-              return soFoundNothing
-                ? []
-                : !soSlanks.length
-                ? [createResponseFromSo(baseform, $soBody)]
-                : await Promise.all(
-                    soSlanks.map(
-                      async (x: unknown): Promise<WordQueryResponse> => {
-                        try {
-                          const body = await fetch(
-                            `https://svenska.se${$soBody(x).attr('href')}`,
-                            {
-                              headers: {
-                                'User-Agent': reqUserAgent,
-                              },
-                            }
-                          ).then(r => r.text());
-
-                          return createResponseFromSo(
-                            baseform,
-                            cheerio.load(body)
-                          );
-                        } catch {
-                          return createEmptyResponse();
+            const $soBody = toDocument(soBody);
+            const soFoundNothing = $soBody.textContent.startsWith(
+              `Sökningen på ${word} i`
+            );
+            // This can be tested by querying "runt".
+            const soSlanks = $$($soBody, '.slank');
+            return soFoundNothing
+              ? []
+              : !soSlanks.length
+              ? [createResponseFromSo(baseform, $soBody)]
+              : await Promise.all(
+                  soSlanks.map(async (x): Promise<WordQueryResponse> => {
+                    try {
+                      const body = await fetch(
+                        `https://svenska.se${x.getAttribute('href')}`,
+                        {
+                          headers: {
+                            'User-Agent': reqUserAgent,
+                          },
                         }
-                      }
-                    )
-                  );
-            } catch {
-              return [];
-            }
+                      ).then(r => r.text());
+
+                      return createResponseFromSo(baseform, toDocument(body));
+                    } catch {
+                      return createEmptyResponse();
+                    }
+                  })
+                );
+          } catch {
+            return [];
           }
-        )
+        })
       );
 
       return ok(word, [...saolResults, ...soResults.flat()]);

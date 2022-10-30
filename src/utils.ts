@@ -69,3 +69,8 @@ export const createResponseFromSo = (
     ),
   };
 };
+
+export const reversoLanguageNameMapping: Record<string, string> = {
+  it: 'italian',
+  en: 'english',
+};

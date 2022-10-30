@@ -104,8 +104,9 @@ const handler = async (req: Request): Promise<Response> => {
           return badRequest(`${sourceLanguage} is not a valid language code.`);
         }
 
-        const glosbeBody = await fetch(
-          `https://glosbe.com/${sourceLanguage}/en/${encodeURIComponent(word)}`,
+        const encodedText = encodeURIComponent(word);
+        const glosbeBodyPromise = fetch(
+          `https://glosbe.com/${sourceLanguage}/en/${encodedText}`,
           {
             headers: {
               'User-Agent': reqUserAgent,
@@ -113,7 +114,9 @@ const handler = async (req: Request): Promise<Response> => {
           }
         ).then(r => r.text());
 
-        const $glosbeBody = toDocument(glosbeBody);
+        const reversoBodyPromise = fetch(
+          `https://context.reverso.net/translation/italian-english/${encodedText}`
+        ).then(r => r.text());
 
         return ok(sourceLanguage, word, [
           {
@@ -121,8 +124,27 @@ const handler = async (req: Request): Promise<Response> => {
             baseform: word,
             compounds: [],
             compoundsLemma: [],
-            definitions: $$($glosbeBody, 'h3.translation').map(x =>
-              x.textContent.replace(/(?![()])[^\p{L}| ]/gu, '').trim()
+            definitions: uniq(
+              $$(toDocument(await glosbeBodyPromise), 'h3.translation')
+                .map(x =>
+                  x.textContent.replace(/(?![()])[^\p{L}| ]/gu, '').trim()
+                )
+                .filter(x => x)
+            ),
+          },
+          {
+            upstream: 'reverso',
+            baseform: word,
+            compounds: [],
+            compoundsLemma: [],
+            definitions: uniq(
+              $$(toDocument(await reversoBodyPromise), '.translation.dict')
+                .map(x =>
+                  (x.getAttribute('data-term') || '')
+                    .replace(/(?![()])[^\p{L}| ]/gu, '')
+                    .trim()
+                )
+                .filter(x => x)
             ),
           },
         ]);
@@ -241,10 +263,15 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 serve(handler, {port});
+
 console.log(
   `${new Date().toISOString()}: Link for debugging: http://localhost:${port}/analyse?word=anden`
 );
 console.log(
   `${new Date().toISOString()}: Link for debugging: http://localhost:${port}/analyse?sourceLanguage=it&word=di`
 );
+console.log(
+  `${new Date().toISOString()}: Link for debugging: http://localhost:${port}/analyse?sourceLanguage=it&word=offrirvi`
+);
+
 console.log(`${new Date().toISOString()}: Up and running on port ${port}`);

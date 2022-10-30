@@ -15,19 +15,34 @@ const port = parseInt(
   10
 );
 
-const lru = new QuickLRU<string, WordQueryResponse[]>({maxSize: 1000000});
+const sourceLanguageLruMapping: Record<
+  string,
+  QuickLRU<string, WordQueryResponse[]>
+> = Object.create(null);
+
+const getLru = (sourceLanguage: string) => {
+  sourceLanguageLruMapping[sourceLanguage] ??= new QuickLRU<
+    string,
+    WordQueryResponse[]
+  >({maxSize: 1000000});
+  return sourceLanguageLruMapping[sourceLanguage];
+};
 
 const handler = async (req: Request): Promise<Response> => {
   try {
-    const badRequest = () => {
+    const badRequest = (reason: string) => {
       console.log(`${new Date().toISOString()}: Bad request: url=${req.url}`);
-      return new Response(JSON.stringify({error: 'Bad request'}), {
+      return new Response(JSON.stringify({error: `Bad request: ${reason}`}), {
         headers: responseHeadersWithCache,
         status: 400,
       });
     };
 
-    const ok = (word: string, rr: WordQueryResponse[]) => {
+    const ok = (
+      sourceLanguage: string,
+      word: string,
+      rr: WordQueryResponse[]
+    ) => {
       rr.forEach(r => {
         r.compounds = trimAndIgnoreEmpty(uniq(r.compounds));
         r.compoundsLemma = trimAndIgnoreEmpty(uniq(r.compoundsLemma));
@@ -39,7 +54,7 @@ const handler = async (req: Request): Promise<Response> => {
         (r: WordQueryResponse) => `${r.baseform}||${r.upstream}`
       );
 
-      lru.set(word, response);
+      getLru(sourceLanguage).set(word, response);
       return new Response(JSON.stringify(response), {
         status: 200,
         headers: responseHeadersWithCache,
@@ -47,7 +62,7 @@ const handler = async (req: Request): Promise<Response> => {
     };
 
     if (!req.url) {
-      return badRequest();
+      return badRequest('URL is invalid.');
     }
 
     if (req.method === 'OPTIONS') {
@@ -61,24 +76,57 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (req.method === 'GET') {
       const url = new URL(req.url);
-      const word = new URL(req.url).searchParams.get('word');
+      const word = url.searchParams.get('word');
       if (!word) {
-        return badRequest();
+        return badRequest('Missing required parameter: ?word=');
       }
 
       if (url.pathname !== '/analyse') {
-        return badRequest();
+        return badRequest('Endpoints beside /analyse are not implemented yet.');
       }
 
-      const cached = lru.get(word);
+      const sourceLanguage = url.searchParams.get('sourceLanguage') || 'sv';
+
+      const cached = getLru(sourceLanguage).get(word);
       if (cached) {
         console.log(
-          `${new Date().toISOString()}: GET (from LRU cache) /analyse?word=: ${word}`
+          `${new Date().toISOString()}: GET (from LRU cache) /analyse?sourceLanguage=:${sourceLanguage}, word=: ${word}`
         );
-        return ok(word, cached);
+        return ok(sourceLanguage, word, cached);
       }
 
-      console.log(`${new Date().toISOString()}: GET /analyse?word=: ${word}`);
+      console.log(
+        `${new Date().toISOString()}: GET /analyse?sourceLanguage=:${sourceLanguage}, word=: ${word}`
+      );
+
+      if (sourceLanguage != 'sv') {
+        if (!/[a-z]{2}/.test(sourceLanguage)) {
+          return badRequest(`${sourceLanguage} is not a valid language code.`);
+        }
+
+        const glosbeBody = await fetch(
+          `https://glosbe.com/${sourceLanguage}/en/${encodeURIComponent(word)}`,
+          {
+            headers: {
+              'User-Agent': reqUserAgent,
+            },
+          }
+        ).then(r => r.text());
+
+        const $glosbeBody = toDocument(glosbeBody);
+
+        return ok(sourceLanguage, word, [
+          {
+            upstream: 'glosbe',
+            baseform: word,
+            compounds: [],
+            compoundsLemma: [],
+            definitions: $$($glosbeBody, 'h3.translation').map(x =>
+              x.textContent.replace(/(?![()])[^\p{L}| ]/gu, '').trim()
+            ),
+          },
+        ]);
+      }
 
       const saolBody = await fetch(
         `https://svenska.se/tri/f_saol.php?sok=${encodeURIComponent(word)}`,
@@ -179,10 +227,10 @@ const handler = async (req: Request): Promise<Response> => {
         })
       );
 
-      return ok(word, [...saolResults, ...soResults.flat()]);
+      return ok(sourceLanguage, word, [...saolResults, ...soResults.flat()]);
     }
 
-    return badRequest();
+    return badRequest('Cannot parse request.');
   } catch (err) {
     console.error({req, err});
     return new Response(JSON.stringify({error: 'Internal server error'}), {
@@ -193,4 +241,10 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 serve(handler, {port});
+console.log(
+  `${new Date().toISOString()}: Link for debugging: http://localhost:${port}/analyse?word=anden`
+);
+console.log(
+  `${new Date().toISOString()}: Link for debugging: http://localhost:${port}/analyse?sourceLanguage=it&word=di`
+);
 console.log(`${new Date().toISOString()}: Up and running on port ${port}`);

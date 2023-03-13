@@ -5,6 +5,7 @@ import {
   $$,
   createResponseFromSaol,
   createResponseFromSo,
+  reversoLanguageNameMapping,
   toDocument,
   trimAndIgnoreEmpty,
 } from './utils.ts';
@@ -100,7 +101,8 @@ const handler = async (req: Request): Promise<Response> => {
       );
 
       if (sourceLanguage != 'sv') {
-        if (!/[a-z]{2}/.test(sourceLanguage)) {
+        const reversoLanguageName = reversoLanguageNameMapping[sourceLanguage];
+        if (!reversoLanguageName) {
           return badRequest(`${sourceLanguage} is not a valid language code.`);
         }
 
@@ -115,7 +117,7 @@ const handler = async (req: Request): Promise<Response> => {
         ).then(r => r.text());
 
         const reversoBodyPromise = fetch(
-          `https://context.reverso.net/translation/italian-english/${encodedText}`
+          `https://context.reverso.net/translation/${reversoLanguageName}-english/${encodedText}`
         ).then(r => r.text());
 
         return ok(sourceLanguage, word, [

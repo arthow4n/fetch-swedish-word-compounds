@@ -54,9 +54,14 @@ export const createResponseFromSo = (
     };
   }
 
-  // Can be tested by querying "anden"
+  // Can be tested by querying "ande"
   $$(document, '.fkomblock').forEach(x => {
     x.textContent = ` (${x.innerText}) `;
+  });
+
+  // Can be tested by querying "ande"
+  $$(document, '.hkom').forEach(x => {
+    x.textContent = ` <${x.innerText}> `;
   });
 
   return {
@@ -65,7 +70,10 @@ export const createResponseFromSo = (
     compounds: [],
     compoundsLemma: [],
     definitions: $$(document, '.kbetydelse').map(x =>
-      x.textContent.replace(/(?![()])[^\p{L}| ]/gu, '').trim()
+      x.textContent
+        .replace(/\s+/g, ' ')
+        .replace(/(?![(<>)])[^\p{L}| ]/gu, '')
+        .trim()
     ),
   };
 };

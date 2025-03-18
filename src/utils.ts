@@ -83,4 +83,5 @@ export const reversoLanguageNameMapping: Record<string, string> = {
   es: 'spanish',
   fr: 'french',
   de: 'german',
+  pt: 'portuguese',
 };

@@ -127,7 +127,7 @@ const handler = async (req: Request): Promise<Response> => {
             compounds: [],
             compoundsLemma: [],
             definitions: uniq(
-              $$(toDocument(await glosbeBodyPromise), 'h3.translation')
+              $$(toDocument(await glosbeBodyPromise), 'h3[id^="translation_"]')
                 .map(x =>
                   x.textContent.replace(/(?![()])[^\p{L}| ]/gu, '').trim()
                 )

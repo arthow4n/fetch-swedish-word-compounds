@@ -1,11 +1,9 @@
-import {uniq, uniqBy, QuickLRU, serve} from '../deps.ts';
+import {QuickLRU, serve, uniq} from '../deps.ts';
 import {WordQueryResponse} from './types.ts';
 import {
-  $,
   $$,
-  createResponseFromSaol,
-  createResponseFromSo,
   reversoLanguageNameMapping,
+  stripHtml,
   toDocument,
   trimAndIgnoreEmpty,
 } from './utils.ts';
@@ -50,10 +48,7 @@ const handler = async (req: Request): Promise<Response> => {
         r.definitions = trimAndIgnoreEmpty(uniq(r.definitions));
       });
 
-      const response = uniqBy(
-        rr.filter(r => !!r.baseform),
-        (r: WordQueryResponse) => `${r.baseform}||${r.upstream}`
-      );
+      const response = rr.filter(r => !!r.baseform);
 
       getLru(sourceLanguage).set(word, response);
       return new Response(JSON.stringify(response), {
@@ -152,106 +147,71 @@ const handler = async (req: Request): Promise<Response> => {
         ]);
       }
 
-      const saolBody = await fetch(
-        `https://svenska.se/tri/f_saol.php?sok=${encodeURIComponent(word)}`,
+      // Can be tested by searching for anden, partiledare, runt
+      const svenskaMsearchResponse = await fetch(
+        `https://svenska.se/api/msearch`,
         {
+          method: 'POST',
           headers: {
             'User-Agent': reqUserAgent,
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            saol: {
+              index: 'sa-svenska-saol',
+              query: word,
+              exact_match: true,
+              from: 0,
+              size: 30,
+            },
+            so: {
+              index: 'sa-svenska-so',
+              query: word,
+              exact_match: true,
+              from: 0,
+              size: 30,
+            },
+            saob: {
+              index: 'sa-svenska-saob',
+              query: word,
+              exact_match: true,
+              from: 0,
+              size: 30,
+            },
+          }),
         }
-      ).then(r => r.text());
+      ).then(r => r.json());
 
-      const $saolBody = toDocument(saolBody);
-      const saolFoundNothing = $($saolBody, 'body')
-        ?.textContent.trim()
-        .startsWith(`Sökningen på ${word} i`);
-
-      // This can be tested by querying "anden".
-      const saolSlanks = $$($saolBody, '.slank');
-
-      const createEmptyResponse = (): WordQueryResponse => {
-        return {
-          upstream: '',
-          baseform: '',
-          compounds: [],
-          compoundsLemma: [],
-          definitions: [],
-        };
-      };
-
-      const saolResults = saolFoundNothing
-        ? []
-        : !saolSlanks.length
-        ? [createResponseFromSaol($saolBody)]
-        : await Promise.all(
-            saolSlanks.map(async (x): Promise<WordQueryResponse> => {
-              try {
-                const body = await fetch(
-                  `https://svenska.se${x.getAttribute('href')}`,
-                  {
-                    headers: {
-                      'User-Agent': reqUserAgent,
-                    },
-                  }
-                ).then(r => r.text());
-
-                return createResponseFromSaol(toDocument(body));
-              } catch {
-                return createEmptyResponse();
-              }
-            })
-          );
-
-      const soResults = await Promise.all(
-        saolResults.map(async (x): Promise<WordQueryResponse[]> => {
-          try {
-            const baseform = x.baseform;
-            const soBody = await fetch(
-              `https://svenska.se/tri/f_so.php?sok=${encodeURIComponent(
-                baseform
-              )}`,
-              {
-                headers: {
-                  'User-Agent': reqUserAgent,
-                },
-              }
-            ).then(r => r.text());
-
-            const $soBody = toDocument(soBody);
-            const soFoundNothing = $soBody.textContent.startsWith(
-              `Sökningen på ${word} i`
-            );
-            // This can be tested by querying "runt".
-            const soSlanks = $$($soBody, '.slank');
-            return soFoundNothing
-              ? []
-              : !soSlanks.length
-              ? [createResponseFromSo(baseform, $soBody)]
-              : await Promise.all(
-                  soSlanks.map(async (x): Promise<WordQueryResponse> => {
-                    try {
-                      const body = await fetch(
-                        `https://svenska.se${x.getAttribute('href')}`,
-                        {
-                          headers: {
-                            'User-Agent': reqUserAgent,
-                          },
-                        }
-                      ).then(r => r.text());
-
-                      return createResponseFromSo(baseform, toDocument(body));
-                    } catch {
-                      return createEmptyResponse();
-                    }
-                  })
-                );
-          } catch {
-            return [];
-          }
-        })
+      const saolHits = (svenskaMsearchResponse.saol?.hits?.hits || []).filter(
+        (hit: any) => hit._index === 'sa-svenska-saol'
+      );
+      const soHits = (svenskaMsearchResponse.so?.hits?.hits || []).filter(
+        (hit: any) => hit._index === 'sa-svenska-so'
       );
 
-      return ok(sourceLanguage, word, [...saolResults, ...soResults.flat()]);
+      const saolResults: WordQueryResponse[] = saolHits.map((hit: any) => ({
+        upstream: 'saol',
+        baseform: hit._source.ortografi,
+        compounds: [],
+        compoundsLemma: hit._source.sparv_compound || [],
+        definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
+          stripHtml(hb.definition)
+        ),
+      }));
+
+      const soResults: WordQueryResponse[] = soHits.map((hit: any) => {
+        return {
+          upstream: 'so',
+          baseform: hit._source.ortografi,
+          compounds: [],
+          compoundsLemma: hit._source.sparv_compound || [],
+          definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
+            stripHtml(hb.definition)
+          ),
+        };
+      });
+
+      return ok(sourceLanguage, word, [...saolResults, ...soResults]);
     }
 
     return badRequest('Cannot parse request.');

@@ -28,12 +28,17 @@ export const createResponseFromSaol = (document: HTMLDocument) => {
 
   const definitions = $$(document, '.lexemid .def').map(x => x.textContent);
 
+  const partikelverb = $$(document, '.grundform_ptv').map(x =>
+    x.textContent.trim()
+  );
+
   const resp: WordQueryResponse = {
     upstream: 'saol',
     baseform,
     compounds,
     compoundsLemma,
     definitions,
+    partikelverb,
   };
 
   return resp;
@@ -51,6 +56,7 @@ export const createResponseFromSo = (
       compounds: [],
       compoundsLemma: [],
       definitions: [],
+      partikelverb: [],
     };
   }
 
@@ -75,6 +81,7 @@ export const createResponseFromSo = (
         .replace(/(?![(<>)])[^\p{L}| ]/gu, '')
         .trim()
     ),
+    partikelverb: [],
   };
 };
 

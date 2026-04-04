@@ -133,6 +133,7 @@ const handler = async (req: Request): Promise<Response> => {
                 )
                 .filter(x => x)
             ),
+            partikelverb: [],
           },
           {
             upstream: 'reverso',
@@ -148,6 +149,7 @@ const handler = async (req: Request): Promise<Response> => {
                 )
                 .filter(x => x)
             ),
+            partikelverb: [],
           },
         ]);
       }
@@ -176,6 +178,7 @@ const handler = async (req: Request): Promise<Response> => {
           compounds: [],
           compoundsLemma: [],
           definitions: [],
+          partikelverb: [],
         };
       };
 

@@ -7,4 +7,5 @@ export type WordQueryResponse = {
   compounds: string[];
   compoundsLemma: string[];
   definitions: string[];
+  partikelverb: string[];
 };

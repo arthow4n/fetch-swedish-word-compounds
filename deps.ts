@@ -1,6 +1,6 @@
 import 'https://deno.land/x/dotenv@v3.2.0/load.ts';
 
-export {serve} from 'https://deno.land/std@0.159.0/http/server.ts';
+
 
 export {DOMParser} from 'https://deno.land/x/deno_dom@v0.1.35-alpha/deno-dom-wasm.ts';
 export type {

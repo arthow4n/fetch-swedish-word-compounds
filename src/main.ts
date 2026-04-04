@@ -1,4 +1,4 @@
-import {QuickLRU, serve, uniq} from '../deps.ts';
+import {QuickLRU, uniq} from '../deps.ts';
 import {WordQueryResponse} from './types.ts';
 import {
   $$,
@@ -224,7 +224,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-serve(handler, {port});
+Deno.serve({port}, handler);
 
 console.log(
   `${new Date().toISOString()}: Link for debugging: http://localhost:${port}/analyse?word=anden`

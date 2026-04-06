@@ -46,7 +46,6 @@ const handler = async (req: Request): Promise<Response> => {
         r.compounds = trimAndIgnoreEmpty(uniq(r.compounds));
         r.compoundsLemma = trimAndIgnoreEmpty(uniq(r.compoundsLemma));
         r.definitions = trimAndIgnoreEmpty(uniq(r.definitions));
-        r.lemma = trimAndIgnoreEmpty(uniq(r.lemma || []));
       });
 
       const response = rr.filter(r => !!r.baseform);
@@ -122,7 +121,6 @@ const handler = async (req: Request): Promise<Response> => {
             baseform: word,
             compounds: [],
             compoundsLemma: [],
-            lemma: [],
             definitions: uniq(
               $$(toDocument(await glosbeBodyPromise), 'h3[id^="translation_"]')
                 .map(x =>
@@ -136,7 +134,6 @@ const handler = async (req: Request): Promise<Response> => {
             baseform: word,
             compounds: [],
             compoundsLemma: [],
-            lemma: [],
             definitions: uniq(
               $$(toDocument(await reversoBodyPromise), '.translation.dict')
                 .map(x =>
@@ -192,12 +189,22 @@ const handler = async (req: Request): Promise<Response> => {
         (hit: any) => hit._index === 'sa-svenska-so'
       );
 
+      const parseLemmaFromHtml = (html: string) => {
+        const match = html.match(/<a[^>]*>(.*?)<\/a>/);
+        if (match) {
+          return match[1].trim();
+        }
+        return stripHtml(html).replace(/^se (även )?/i, '').trim();
+      };
+
       const saolResults: WordQueryResponse[] = saolHits.map((hit: any) => ({
         upstream: 'saol',
         baseform: hit._source.ortografi,
         compounds: [],
-        compoundsLemma: hit._source.sparv_compound || [],
-        lemma: (hit._source.enbartDigitalaHänvisningar || []).map((html: string) => stripHtml(html)),
+        compoundsLemma: [
+          ...(hit._source.sparv_compound || []),
+          ...(hit._source.enbartDigitalaHänvisningar || []).map(parseLemmaFromHtml)
+        ],
         definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
           stripHtml(hb.definition)
         ),
@@ -208,8 +215,10 @@ const handler = async (req: Request): Promise<Response> => {
           upstream: 'so',
           baseform: hit._source.ortografi,
           compounds: [],
-          compoundsLemma: hit._source.sparv_compound || [],
-          lemma: (hit._source.enbartDigitalaHänvisningar || []).map((html: string) => stripHtml(html)),
+          compoundsLemma: [
+            ...(hit._source.sparv_compound || []),
+            ...(hit._source.enbartDigitalaHänvisningar || []).map(parseLemmaFromHtml)
+          ],
           definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
             stripHtml(hb.definition)
           ),

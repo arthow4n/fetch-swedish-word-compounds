@@ -46,6 +46,7 @@ const handler = async (req: Request): Promise<Response> => {
         r.compounds = trimAndIgnoreEmpty(uniq(r.compounds));
         r.compoundsLemma = trimAndIgnoreEmpty(uniq(r.compoundsLemma));
         r.definitions = trimAndIgnoreEmpty(uniq(r.definitions));
+        r.lemma = trimAndIgnoreEmpty(uniq(r.lemma || []));
       });
 
       const response = rr.filter(r => !!r.baseform);
@@ -121,6 +122,7 @@ const handler = async (req: Request): Promise<Response> => {
             baseform: word,
             compounds: [],
             compoundsLemma: [],
+            lemma: [],
             definitions: uniq(
               $$(toDocument(await glosbeBodyPromise), 'h3[id^="translation_"]')
                 .map(x =>
@@ -134,6 +136,7 @@ const handler = async (req: Request): Promise<Response> => {
             baseform: word,
             compounds: [],
             compoundsLemma: [],
+            lemma: [],
             definitions: uniq(
               $$(toDocument(await reversoBodyPromise), '.translation.dict')
                 .map(x =>
@@ -194,6 +197,7 @@ const handler = async (req: Request): Promise<Response> => {
         baseform: hit._source.ortografi,
         compounds: [],
         compoundsLemma: hit._source.sparv_compound || [],
+        lemma: (hit._source.enbartDigitalaHänvisningar || []).map((html: string) => stripHtml(html)),
         definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
           stripHtml(hb.definition)
         ),
@@ -205,6 +209,7 @@ const handler = async (req: Request): Promise<Response> => {
           baseform: hit._source.ortografi,
           compounds: [],
           compoundsLemma: hit._source.sparv_compound || [],
+          lemma: (hit._source.enbartDigitalaHänvisningar || []).map((html: string) => stripHtml(html)),
           definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
             stripHtml(hb.definition)
           ),

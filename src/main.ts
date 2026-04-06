@@ -189,11 +189,22 @@ const handler = async (req: Request): Promise<Response> => {
         (hit: any) => hit._index === 'sa-svenska-so'
       );
 
+      const parseLemmaFromHtml = (html: string) => {
+        const match = html.match(/<a[^>]*>(.*?)<\/a>/);
+        if (match) {
+          return match[1].trim();
+        }
+        return stripHtml(html).replace(/^se (även )?/i, '').trim();
+      };
+
       const saolResults: WordQueryResponse[] = saolHits.map((hit: any) => ({
         upstream: 'saol',
         baseform: hit._source.ortografi,
         compounds: [],
-        compoundsLemma: hit._source.sparv_compound || [],
+        compoundsLemma: [
+          ...(hit._source.sparv_compound || []),
+          ...(hit._source.enbartDigitalaHänvisningar || []).map(parseLemmaFromHtml)
+        ],
         definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
           stripHtml(hb.definition)
         ),
@@ -204,7 +215,10 @@ const handler = async (req: Request): Promise<Response> => {
           upstream: 'so',
           baseform: hit._source.ortografi,
           compounds: [],
-          compoundsLemma: hit._source.sparv_compound || [],
+          compoundsLemma: [
+            ...(hit._source.sparv_compound || []),
+            ...(hit._source.enbartDigitalaHänvisningar || []).map(parseLemmaFromHtml)
+          ],
           definitions: (hit._source.huvudbetydelser || []).map((hb: any) =>
             stripHtml(hb.definition)
           ),

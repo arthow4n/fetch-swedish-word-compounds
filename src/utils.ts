@@ -3,8 +3,10 @@ import {DOMParser, Element, HTMLDocument} from '../deps.ts';
 export const trimAndIgnoreEmpty = (x: string[]) =>
   x.map(x => x.trim()).filter(x => x);
 
+const parser = new DOMParser();
+
 export const toDocument = (html: string) =>
-  new DOMParser().parseFromString(html, 'text/html')!;
+  parser.parseFromString(html, 'text/html')!;
 
 export const stripHtml = (html: string | undefined) =>
   (html && toDocument(html).body?.textContent) || '';

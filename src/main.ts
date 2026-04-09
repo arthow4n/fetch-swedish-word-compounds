@@ -43,9 +43,10 @@ const handler = async (req: Request): Promise<Response> => {
       rr: WordQueryResponse[]
     ) => {
       rr.forEach(r => {
-        r.compounds = trimAndIgnoreEmpty(uniq(r.compounds));
-        r.compoundsLemma = trimAndIgnoreEmpty(uniq(r.compoundsLemma));
-        r.definitions = trimAndIgnoreEmpty(uniq(r.definitions));
+        r.baseform = stripHtml(r.baseform);
+        r.compounds = trimAndIgnoreEmpty(uniq(r.compounds.map(stripHtml)));
+        r.compoundsLemma = trimAndIgnoreEmpty(uniq(r.compoundsLemma.map(stripHtml)));
+        r.definitions = trimAndIgnoreEmpty(uniq(r.definitions.map(stripHtml)));
       });
 
       const response = rr.filter(r => !!r.baseform);

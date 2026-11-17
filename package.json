@@ -6,6 +6,7 @@
     "dev": "cf dev",
     "build": "cf build",
     "deploy": "cf deploy",
+    "deploy:built": "npm run deploy -- --prebuilt --mode production && npm run smoke",
     "typecheck": "cf workers types && tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
@@ -29,6 +30,7 @@
     "vitest": "5.1.0"
   },
   "private": true,
+  "packageManager": "npm@11.9.0",
   "engines": {
     "node": ">=24.22.0 <25"
   },

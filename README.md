@@ -60,61 +60,71 @@ Reverso may deny server-side requests with HTTP 403; Glosbe remains usable.
 errors. Upstream requests have a 15-second timeout. No runtime secrets or storage
 resources are required. Workers Logs and Traces are enabled.
 
-## Deployment
+## Deployment with Workers Builds
 
-`cloudflare.config.ts` defines the account, entrypoint, compatibility date,
-public workers.dev endpoint, CORS binding, and observability. To deploy with a
-Cloudflare API token that can edit Workers scripts in the configured account:
+This repository is ready for Cloudflare Workers Builds. There are no GitHub
+Actions workflows: once connected, Workers Builds runs the checks and deploys
+production directly from GitHub. Cloudflare creates and manages the build token;
+you do not need to create a token manually or add a GitHub Actions secret.
+
+`cloudflare.config.ts` defines the account, Worker name, entrypoint, compatibility
+date, public workers.dev endpoint, CORS binding, and observability. The build
+image reads `.node-version` for Node.js and `packageManager` in `package.json`
+for npm. `package-lock.json` pins dependencies.
+
+### Connect the existing Worker
+
+1. Open [the Cloudflare Worker](https://dash.cloudflare.com/cfc930f5a1c44ec8df3c0e8819e7b9d0/workers/services/view/fetch-swedish-word-compounds/production)
+   and go to **Settings → Builds → Connect**.
+2. Choose **GitHub**, authorize the **Cloudflare Workers & Pages** GitHub app,
+   and grant it access to `arthow4n/fetch-swedish-word-compounds`.
+3. Connect the repository to the existing Worker with these settings:
+
+   | Setting                                       | Value                                        |
+   | --------------------------------------------- | -------------------------------------------- |
+   | Production branch                             | `master`                                     |
+   | Root directory                                | `/` (repository root)                        |
+   | Build command                                 | `npm run check`                              |
+   | Deploy command                                | `npm run deploy:built`                       |
+   | API token                                     | Let Cloudflare create/manage the build token |
+   | Builds for non-production branches / previews | Disabled                                     |
+
+4. Save the settings and start the first build. If it does not start
+   automatically, use **Retry build** or push a commit to `master`.
+5. Confirm validation, deployment, and live smoke checks pass in the build log.
+   Later pushes to `master` build and deploy automatically.
+
+Leave automatic dependency installation enabled: the committed npm lockfile
+selects npm. No custom Node/npm build variables or runtime secrets are required.
+Use the commands above rather than the dashboard's default Wrangler commands;
+this project uses the Cloudflare `cf` CLI and `cloudflare.config.ts`.
+
+`npm run check` formats nothing: it verifies formatting, generates types,
+type-checks, runs tests, and builds. A failed check prevents deployment.
+`npm run deploy:built` deploys that exact build using `--prebuilt --mode production`
+and then runs `npm run smoke` against the live Worker. A smoke failure fails the
+build after deployment, so inspect the build log and deployed version if this
+happens.
+
+The initial Worker is already live. The API connection attempt reported
+**This project is disconnected from your Git account**; the browser authorization
+in step 2 must be completed before Workers Builds can be connected. The GitHub
+app connection used by this coding assistant is separate from Cloudflare's
+GitHub app authorization.
+
+See [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/)
+and [GitHub integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)
+for the dashboard connection flow.
+
+### Deploy from a local machine
+
+For manual deployment outside Workers Builds, authenticate with the Cloudflare
+CLI or set `CLOUDFLARE_API_TOKEN` in your local environment, then run:
 
 ```sh
 npm ci
 npm run check
-# Set CLOUDFLARE_API_TOKEN in your environment, then:
-npm run deploy
-npm run smoke
+npm run deploy:built
 ```
-
-The `Worker checks` GitHub Actions workflow runs on pushes and pull requests.
-The `Deploy Worker` workflow runs after each push to `master`, or manually from
-the Actions tab with `master` selected. It validates the source, deploys that
-same build with `--prebuilt --mode production`, then runs live smoke checks.
-Deployments are serialized. Other branches cannot deploy to production.
-
-### GitHub Actions setup
-
-One secret is required; the account ID is already configured in
-`cloudflare.config.ts`.
-
-1. Open [Cloudflare API tokens](https://dash.cloudflare.com/profile/api-tokens)
-   and create a custom token named `fetch-swedish-word-compounds GitHub Actions`.
-   Grant **Account / Workers Scripts / Edit** and **Account / Account Settings /
-   Read**, restricted to the **arthow4n** account. No zone permissions are needed
-   for this workers.dev deployment. Copy the generated token.
-2. Open [GitHub Actions secrets](https://github.com/arthow4n/fetch-swedish-word-compounds/settings/secrets/actions)
-   and select **New repository secret**. Name it `CLOUDFLARE_API_TOKEN` and paste
-   the token as its value. Alternatively, add it to the existing **Production**
-   environment. Never commit the token or paste it into chat.
-3. Open [Deploy Worker](https://github.com/arthow4n/fetch-swedish-word-compounds/actions/workflows/deploy.yml),
-   select **Run workflow**, select `master`, and run it. Confirm the deployment
-   and live verification steps pass. Later pushes to `master` deploy automatically.
-
-With an appropriately authorized GitHub CLI login, step 2 can also be performed
-with this command, which prompts for the secret value without putting it in
-shell history:
-
-```sh
-gh secret set CLOUDFLARE_API_TOKEN --repo arthow4n/fetch-swedish-word-compounds
-```
-
-When the secret is missing, validation still runs, but deployment and live
-verification are skipped. The workflow emits a warning and records **Deployment
-pending configuration** in its summary. A green check alone does not mean a
-deployment occurred; look for **Worker deployed and verified** in the summary.
-
-The initial production deployment was uploaded through authenticated Cloudflare
-API access. The available GitHub app credential cannot manage Actions secrets,
-and Cloudflare token management requires reconnecting the app. Completing the
-secret setup above does not require Cloudflare's separate Git integration or
-Workers Builds.
 
 The consuming application is [web-swedish-reader](https://github.com/arthow4n/web-swedish-reader).

@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "description": "A small API server for analysing a given Swedish word by scraping online dictionaries.",
   "scripts": {
-    "dev": "cf dev",
-    "build": "cf build",
-    "deploy": "cf deploy",
-    "deploy:built": "npm run deploy -- --prebuilt --mode production && npm run smoke",
-    "typecheck": "cf workers types && tsc --noEmit",
+    "dev": "wrangler dev",
+    "build": "npm run check && wrangler deploy --dry-run --outdir dist",
+    "deploy": "wrangler deploy",
+    "typecheck": "wrangler types .cloudflare/types/index.d.ts && tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
-    "smoke": "node scripts/smoke.mjs"
+    "check": "npm run format:check && npm run typecheck && npm test",
+    "smoke": "node scripts/smoke.mjs",
+    "preview": "wrangler preview"
   },
   "repository": {
     "type": "git",
@@ -21,13 +21,12 @@
   "license": "MIT",
   "type": "module",
   "devDependencies": {
-    "@cloudflare/vite-plugin": "2.0.0-rc.1",
     "@cloudflare/vitest-plugin": "1.8.4",
-    "cf": "1.0.0-rc.1",
+    "@types/node": "24.19.2",
     "prettier": "3.10.1",
     "typescript": "7.0.2",
-    "vite": "8.3.8",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "wrangler": "4.164.0"
   },
   "private": true,
   "packageManager": "npm@11.9.0",

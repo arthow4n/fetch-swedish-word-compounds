@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "fetch-swedish-word-compounds",
+  "account_id": "cfc930f5a1c44ec8df3c0e8819e7b9d0",
+  "main": "src/main.ts",
+  "compatibility_date": "2026-11-17",
+  "workers_dev": true,
+  "minify": true,
+  "vars": { "FSWC_CORS_ALLOW_ORIGIN": "*" },
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  "previews": { "vars": { "FSWC_CORS_ALLOW_ORIGIN": "*" } },
+}

@@ -1,23 +1,17 @@
-import { DOMParser, Element, HTMLDocument } from "../deps.ts";
+import { parseDocument } from "htmlparser2";
+import type { AnyNode, Element } from "domhandler";
+import { selectAll } from "css-select";
+import { textContent } from "domutils";
 
-export const trimAndIgnoreEmpty = (x: string[]) =>
-  x.map((x) => x.trim()).filter((x) => x);
-
-const parser = new DOMParser();
-
-export const toDocument = (html: string) =>
-  parser.parseFromString(html, "text/html")!;
-
+export const uniq = <T>(values: T[]): T[] => [...new Set(values)];
+export const trimAndIgnoreEmpty = (values: string[]) =>
+  values.map((value) => value.trim()).filter(Boolean);
+export const toDocument = (html: string) => parseDocument(html);
 export const stripHtml = (html: string | undefined) =>
-  (html && toDocument(html).body?.textContent) || "";
-
-export const $$ = (document: HTMLDocument, selector: string) =>
-  Array.from(document.querySelectorAll(selector)) as Element[];
-
-export const $ = (
-  document: HTMLDocument,
-  selector: string,
-): Element | undefined => $$(document, selector).at(0);
+  html ? textContent(toDocument(html)) : "";
+export const $$ = (document: ReturnType<typeof toDocument>, selector: string) =>
+  selectAll<AnyNode, Element>(selector, document);
+export { textContent };
 
 export const reversoLanguageNameMapping: Record<string, string> = Object.assign(
   Object.create(null),

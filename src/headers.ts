@@ -1,27 +1,9 @@
-export const commonHaders = {
-  "Content-Type": "application/json",
-};
+export const responseHeaders = (origin: string) => ({
+  "Content-Type": "application/json; charset=utf-8",
+  "Access-Control-Allow-Origin": origin,
+  "Access-Control-Allow-Methods": "OPTIONS, GET",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "604800",
+});
 
-if (Deno.env.get("FSWC_CORS_ALLOW_ORIGIN")) {
-  console.log(
-    `${new Date().toISOString()}: Enabling CORS for ${
-      Deno.env.get(
-        "FSWC_CORS_ALLOW_ORIGIN",
-      )
-    }`,
-  );
-  Object.assign(commonHaders, {
-    "Access-Control-Allow-Origin": Deno.env.get("FSWC_CORS_ALLOW_ORIGIN"),
-    "Access-Control-Allow-Methods": "OPTIONS, POST, GET",
-    "Access-Control-Max-Age": "604800",
-  });
-}
-
-export const cacheHeaders = {
-  "Cache-Control": "public, max-age=604800, immutable",
-};
-
-export const responseHeadersWithCache = {
-  ...commonHaders,
-  ...cacheHeaders,
-};
+export const cacheControl = "public, max-age=604800, immutable";

@@ -119,11 +119,11 @@ preview, pass its URL using `API_BASE_URL`:
 API_BASE_URL=https://your-preview-url npm run smoke
 ```
 
-The initial Worker is already live. The API connection attempt reported
-**This project is disconnected from your Git account**; the browser authorization
-in step 2 must be completed before Workers Builds can be connected. The GitHub
-app connection used by this coding assistant is separate from Cloudflare's
-GitHub app authorization.
+The production Worker is connected to this GitHub repository through Workers
+Builds. Pushes to `master` trigger the production build and deployment; preview
+builds are enabled for other branches. Build status and logs are available in
+the Worker's **Settings → Builds** page. The GitHub app connection used by this
+coding assistant is separate from Cloudflare's GitHub app authorization.
 
 See [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/)
 and [GitHub integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)
